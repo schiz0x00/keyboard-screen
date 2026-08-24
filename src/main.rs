@@ -14,6 +14,12 @@ mod usage;
 use state::{Snapshot, Source};
 use std::time::{Duration, Instant};
 
+/// How often the watch loop wakes to check the cheap local signals.
+const SLICE: Duration = Duration::from_secs(2);
+/// Floor between two usage-triggered refreshes, so a busy session cannot turn
+/// every keystroke's worth of tokens into its own ping.
+const MIN_BURST_GAP: u64 = 15;
+
 const USAGE: &str = "\
 keyboard-screen - Claude usage limits on the Aula F75 Max 128x128 screen
 
@@ -21,7 +27,9 @@ USAGE:
     keyboard-screen [OPTIONS]
 
 OPTIONS:
-    -w, --watch [SECS]   Keep refreshing (default 60s, minimum 60s)
+    -w, --watch [SECS]   Keep refreshing (default 60s, minimum 60s). Between
+                         pings, a rise in Claude Code's usage file refreshes the
+                         screen at once.
     -s, --slot N         Display slot to write, 1-255 (default 1)
     -n, --no-refresh     Do not ping the API; use cached / Claude Code data only
     -o, --preview FILE   Also write the frame as a PPM image for inspection
@@ -234,12 +242,23 @@ fn collect(args: &Args) -> Snapshot {
 
 /// Refresh forever.
 ///
-/// Two things make this steadier than a plain `sleep(interval)` loop:
-/// a suspended laptop wakes to a wall clock that has jumped, and a failed ping
-/// must not wait a full interval before trying again.
+/// Three things make this steadier than a plain `sleep(interval)` loop:
+/// a suspended laptop wakes to a wall clock that has jumped; a failed ping must
+/// not wait a full interval before trying again; and usage that climbs mid-
+/// interval should reach the screen at once rather than up to a minute late.
+///
+/// That last one cannot be done by pinging harder - every ping spends quota, so
+/// the API stays on the interval. Instead we poll Claude Code's own
+/// `usage-exact.json`, which is a free local read, every couple of seconds: when
+/// it shows more usage than we last saw there, something has just been spent and
+/// a refresh is worth its ping. Quiet stretches never trigger it, so the loop
+/// settles straight back to the plain interval.
 fn watch(args: &Args, interval: u64) {
     let mut wall = state::now();
     let mut failures: u32 = 0;
+    // Highest reading seen in Claude Code's file, so each climb fires once.
+    let mut seen = state::claude_code_peak();
+    let mut last_burst = Instant::now() - Duration::from_secs(MIN_BURST_GAP);
 
     loop {
         let started = Instant::now();
@@ -256,16 +275,32 @@ fn watch(args: &Args, interval: u64) {
 
         // Sleep in short slices so a resumed machine is noticed promptly: if the
         // wall clock jumped further than the monotonic clock, we were suspended
-        // and the numbers on screen are older than they claim.
+        // and the numbers on screen are older than they claim. The same slices
+        // are where the cheap usage check happens.
         let deadline = Instant::now() + Duration::from_secs(wait);
         while Instant::now() < deadline {
-            std::thread::sleep(Duration::from_secs(2).min(deadline - Instant::now()));
+            std::thread::sleep(SLICE.min(deadline - Instant::now()));
             let now = state::now();
-            let drift = now - wall - 2;
+            let drift = now - wall - SLICE.as_secs() as i64;
             wall = now;
             if drift > 30 {
                 if args.verbose {
                     eprintln!("clock jumped {drift}s (resume?) - refreshing now");
+                }
+                break;
+            }
+
+            let Some(peak) = state::claude_code_peak() else {
+                continue;
+            };
+            let climbed = seen.is_some_and(|s| peak > s + 0.05);
+            seen = Some(seen.map_or(peak, |s| s.max(peak)));
+            // Rate-limit the bursts: a busy session moves the number constantly,
+            // and each burst is a ping plus a full screen upload.
+            if climbed && last_burst.elapsed() >= Duration::from_secs(MIN_BURST_GAP) {
+                last_burst = Instant::now();
+                if args.verbose {
+                    eprintln!("usage rose to {peak:.1}% - refreshing now");
                 }
                 break;
             }

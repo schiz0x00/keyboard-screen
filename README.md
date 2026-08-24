@@ -31,10 +31,32 @@ curl -fsSL .../install.sh | KEYBOARD_SCREEN_BIN_DIR=~/bin KEYBOARD_SCREEN_SKIP_U
 
 ```sh
 keyboard-screen                # refresh once and push to the screen
-keyboard-screen --watch 60     # keep it updated (60s minimum)
+keyboard-screen --watch        # keep it updated, default 60s interval
+keyboard-screen --watch 300    # ...or a slower one (60s minimum)
 keyboard-screen --dry-run -o /tmp/f.ppm   # render without a keyboard attached
 keyboard-screen --no-refresh   # draw from cache; spend nothing
 ```
+
+| Option | What it does |
+| --- | --- |
+| `-w, --watch [SECS]` | Keep refreshing. The interval is optional and defaults to 60s; anything below that is raised to 60s, because each refresh spends quota. |
+| `-s, --slot N` | Display slot to write, 1–255 (default 1). |
+| `-n, --no-refresh` | Never ping the API; draw from the cache or Claude Code's file. |
+| `-o, --preview FILE` | Also write the frame as a binary PPM for inspection. |
+| `--dry-run` | Render but don't touch the keyboard. |
+| `--test-pattern` | Push an unmistakable test frame instead of the dashboard. |
+| `-v, --verbose` | Log what it is doing, including why a refresh fired. |
+| `-h, --help`, `-V, --version` | Help and version. |
+
+(`--wireless`, `--probe-wireless` and `--probe-write` exist only for the
+reverse-engineering write-up; the screen is wired-only. See
+[`docs/wireless-re.md`](docs/wireless-re.md).)
+
+In `--watch` mode the API is pinged on the interval, but the screen does not
+wait for it: between pings the loop reads Claude Code's own
+`~/.claude/usage-exact.json` every two seconds - a free local read - and pushes
+a fresh frame within seconds of the numbers climbing, at most once every 15
+seconds. When nothing is being spent, it stays on the plain interval.
 
 Run it continuously:
 

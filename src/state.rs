@@ -134,3 +134,16 @@ pub fn load_claude_code() -> Option<Snapshot> {
         age: u.staleness.unwrap_or(0).max(0),
     })
 }
+
+/// The highest percentage Claude Code's own file currently reports, across both
+/// windows. Cheap and free - it is a local read, no API ping - so the watch loop
+/// can poll it every couple of seconds to notice usage climbing between pings.
+pub fn claude_code_peak() -> Option<f64> {
+    let snap = load_claude_code()?;
+    [snap.session, snap.week]
+        .iter()
+        .filter_map(|m| m.map(|m| m.percent_used))
+        .fold(None, |acc: Option<f64>, p| {
+            Some(acc.map_or(p, |a| a.max(p)))
+        })
+}
