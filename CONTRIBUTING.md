@@ -29,9 +29,12 @@ cargo run --release -- --dry-run -o /tmp/f.ppm   # render with no keyboard attac
 
 ## Releasing
 
-Bump `version` in `Cargo.toml` and merge to `main`. The release workflow tags,
-builds, and publishes automatically. Add the entry to `CHANGELOG.md` in the same
-change.
+Bump `version` in `Cargo.toml`, run `cargo build` so `Cargo.lock` picks up the
+new version, add the entry to `CHANGELOG.md`, and merge to `main`. The release
+workflow tags, builds, and publishes automatically.
+
+Forgetting the lock file fails the build under `--locked`; CI checks this too,
+so it surfaces on the pull request rather than at release time.
 
 ## A note on the wireless screen
 
