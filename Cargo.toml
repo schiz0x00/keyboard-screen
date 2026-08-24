@@ -1,0 +1,15 @@
+[package]
+name = "keyboard-screen"
+version = "0.1.0"
+edition = "2021"
+description = "Render Claude subscription usage limits onto the Epomaker x Aula F75 Max 128x128 keyboard screen"
+
+[dependencies]
+libc = "0.2"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

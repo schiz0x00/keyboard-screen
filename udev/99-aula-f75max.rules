@@ -1,0 +1,4 @@
+# Epomaker x Aula F75 Max - let the console user drive the 128x128 screen
+# without root. The screen is wired-only; the 2.4GHz dongle exposes different
+# vendor usage pages and is not covered here.
+KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="800a", TAG+="uaccess"

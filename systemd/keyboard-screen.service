@@ -1,0 +1,14 @@
+[Unit]
+Description=Claude usage limits on the Aula F75 Max screen
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 60s is the floor: each refresh spends a ~9-token Haiku ping of subscription quota.
+ExecStart=%h/.local/bin/keyboard-screen --watch 60
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
