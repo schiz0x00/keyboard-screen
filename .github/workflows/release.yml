@@ -24,7 +24,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -55,7 +55,7 @@ jobs:
     env:
       VERSION: ${{ needs.gate.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Tags and full history are needed to work out what changed since the
           # previous release; a shallow clone silently produces "First release".
