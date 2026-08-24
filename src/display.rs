@@ -139,7 +139,16 @@ const WIRELESS_CHUNK_LEN: usize = 32;
 
 /// Push a frame over the 2.4GHz dongle.
 ///
-/// UNPROVEN. The wired opcodes are reused on the wireless channels because the
+/// THIS CANNOT WORK, and is retained only as a record of what was tried.
+///
+/// Decompiling the vendor software settled it: `FUN_0044fa50` assigns the bulk
+/// pixel handle only to a HID interface whose report length is 4097 (4096 plus
+/// the report ID), and the pixel sender returns immediately when that handle is
+/// unset. The dongle exposes only 33-byte pipes, so it never gets one - the
+/// vendor's own upload is a no-op over 2.4GHz. There is no opcode to find,
+/// because there is no wireless bulk endpoint. See `docs/wireless-re.md`.
+///
+/// Original (wrong) reasoning: the wired opcodes are reused on the wireless channels because the
 /// vendor software treats 2.4GHz as a full mode (`config.xml` mode 2) and its
 /// HID write takes the transfer length from the open interface's
 /// `OutputReportByteLength` at runtime rather than a hardcoded 4096 - so one

@@ -109,76 +109,23 @@ transport are all in-tree.
 
 ## Wireless
 
-The screen is **wired-only** in practice.
+**The screen is wired-only, and this is settled.** Decompiling the vendor
+software shows it enumerates HID interfaces by report length and assigns its
+bulk pixel handle *only* to an interface reporting 4097 bytes (4096 + report
+ID). The 2.4GHz dongle exposes only 33-byte pipes, so it never receives that
+handle and the vendor's own image upload is a no-op in 2.4G mode. There is no
+wireless display opcode to find, because there is no wireless bulk endpoint.
 
-The 2.4GHz dongle (`05ac:024f` — it reports Apple's vendor id, so `lsusb` calls
-it an Apple keyboard) does expose two vendor pages: `0xff59` command, 64-byte
-reports, and `0xff60` raw, **32-byte** reports. That 32 is the obstacle — wired,
-the raw pipe is 4096 bytes, so a frame is 9 chunks; wireless it would be ~1032
-packets, and the `04 72` metadata packet counts chunks in 4096-byte units. The
-wired framing cannot be what the firmware expects over the air.
+Bluetooth is excluded by the vendor too: *"keyboard settings are not supported
+in Bluetooth mode for now."*
 
-The wireless protocol is also a different vocabulary, not the wired one on a
-narrower pipe: 32-byte packets, opcodes `05`/`07`/`0f`/`20`, an `aa 55` marker
-and a checksum at byte 31. Every open-source driver implements only RGB,
-battery, and settings over wireless, and gates image upload on a wired link.
+Full evidence, including the decompiled classifier and the confirmed wired
+command sequence, is in `docs/wireless-re.md`.
 
-Over Bluetooth it is not merely unimplemented: the vendor software refuses it
-too — its own UI string reads *"keyboard settings are not supported in Bluetooth
-mode for now. Please use the USB or 2.4 GHz connection."*
+The wireless channel does work for *settings*. `--probe-write` drives the RGB
+over 2.4GHz with documented opcodes, and established that the byte order is
+**R, G, B at bytes 4, 5, 6** — the existing open-source drivers swap red and
+blue.
 
-The vendor software does treat 2.4GHz as a full mode (`config.xml` declares
-`mode value="2"` for the dongle at `05AC:024F`, interface `MI_03`), and its HID
-write takes the transfer length from the open interface's report length at
-runtime rather than a hardcoded 4096 — so one upload path plausibly serves both
-transports. On that basis `--wireless` reuses the wired opcodes against the
-wireless channels.
-
-**It does not work.** Four framings have been tried on hardware and all were
-accepted by the kernel and silently discarded by the firmware:
-
-| Attempt | Commands | Pixel data | Result |
-|---|---|---|---|
-| initial | `0xff59` 64B, no checksum | `0xff60` 32B | no change |
-| `--variant a` | `0xff60` 32B + checksum | `0xff60` 32B | no change |
-| `--variant b` | `0xff60` 32B + checksum | `0xff59` 64B | no change |
-| `--variant c` | `0xff59` 64B + checksum | `0xff59` 64B | no change |
-
-Variants a–c use the *proven* wireless envelope — the same 32-byte,
-checksum-at-31 shape that the RGB commands use successfully — so the framing is
-not the problem. What remains unknown is the **opcode**: the wired display
-commands are `04 18` / `04 72` / `04 02`, and `0x04` appears to be undefined in
-the wireless opcode space (`05` RGB, `07` keys, `0f` commit, `20` battery).
-
-Recovering the real opcode needs decompilation of the vendor software's LCD send
-path, or a USB capture of it pushing an image while in 2.4G mode. It is not
-recoverable by extrapolation, and guessing opcodes means firing undefined
-instructions at the firmware — so the guessing stopped here.
-
-`--probe-write` isolates the remaining question by driving the RGB over 2.4GHz
-with documented opcodes: if the lighting responds, wireless writes reach the
-firmware and only the display opcode is unknown; if not, the dongle does not
-accept host commands at all.
-
-`--probe-wireless` investigates the dongle read-only. It writes exactly one
-thing — the battery query documented by the existing drivers — and otherwise
-just listens. It deliberately does not fire wired `04 xx` opcodes at the
-wireless channel: they are undefined there, and their wired neighbours
-(`04 19`, `04 15`, `04 11`) are the factory-reset sequence.
-
-Run it with the keyboard switched to 2.4G mode; a battery reply means the
-channel is live and the image path is worth reverse-engineering from a USB
-capture of the vendor software.
-
-### Confirmed wireless findings
-
-Established on real hardware with `--probe-write`:
-
-* **The keyboard acts on wireless host writes.** Driving the RGB over `0xff60`
-  with the documented packets changes the lighting, so the 32-byte envelope —
-  `aa 55` marker, checksum at byte 31 — is validated and accepted. Only the
-  *display* opcode remains unknown.
-* **Wireless RGB byte order is R, G, B at bytes 4, 5, 6.** The existing
-  open-source drivers put blue in byte 4 and red in byte 6, which renders red
-  and blue swapped. Green sits in the middle either way, which is what makes the
-  error easy to overlook.
+`--wireless` and its `--variant` framings are kept only as a record of what was
+tried; none of them work, and none of them can.
