@@ -11,11 +11,21 @@ use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 
+/// The keyboard itself, over USB-C.
 pub const VENDOR_ID: u16 = 0x0c45;
 pub const PRODUCT_ID: u16 = 0x800a;
 
+/// The 2.4GHz dongle, which reports Apple's vendor id rather than its own.
+pub const DONGLE_VENDOR_ID: u16 = 0x05ac;
+pub const DONGLE_PRODUCT_ID: u16 = 0x024f;
+
 pub const COMMAND_USAGE_PAGE: u16 = 0xff13;
 pub const RAW_USAGE_PAGE: u16 = 0xff68;
+
+/// Wireless vendor pages. The raw one carries 32-byte reports, not 4096 - see
+/// `probe.rs` for why that matters.
+pub const WIRELESS_COMMAND_USAGE_PAGE: u16 = 0xff59;
+pub const WIRELESS_RAW_USAGE_PAGE: u16 = 0xff60;
 
 pub const COMMAND_LEN: usize = 64;
 pub const CHUNK_LEN: usize = 4096;
@@ -91,6 +101,31 @@ impl HidDevice {
         self.file.write_all(&buf)
     }
 
+    /// Send bytes exactly as given - the caller owns byte 0, the report ID.
+    pub fn send_output_raw(&mut self, data: &[u8]) -> std::io::Result<()> {
+        self.file.write_all(data)
+    }
+
+    /// Read one input report if one arrives within `timeout_ms`.
+    pub fn read_input(&mut self, len: usize, timeout_ms: i32) -> Option<Vec<u8>> {
+        let mut pfd = libc::pollfd {
+            fd: self.file.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        if unsafe { libc::poll(&mut pfd, 1, timeout_ms) } <= 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; len];
+        match self.file.read(&mut buf) {
+            Ok(n) if n > 0 => {
+                buf.truncate(n);
+                Some(buf)
+            }
+            _ => None,
+        }
+    }
+
     /// Best-effort drain of one input report. The keyboard ACKs each chunk; we
     /// wait for it to keep from overrunning the device, but a timeout is not an
     /// error - the transfer still lands.
@@ -110,9 +145,14 @@ impl HidDevice {
 
 use std::os::unix::fs::OpenOptionsExt;
 
-/// Find the hidraw node for this keyboard exposing `usage_page`.
+/// Find the hidraw node for the wired keyboard exposing `usage_page`.
 pub fn find(usage_page: u16) -> Result<HidDevice, String> {
-    let want = format!("HID_ID=0003:{:08X}:{:08X}", VENDOR_ID, PRODUCT_ID);
+    find_on(VENDOR_ID, PRODUCT_ID, usage_page)
+}
+
+/// Find the hidraw node for `vid:pid` exposing `usage_page`.
+pub fn find_on(vid: u16, pid: u16, usage_page: u16) -> Result<HidDevice, String> {
+    let want = format!("HID_ID=0003:{:08X}:{:08X}", vid, pid);
     let mut candidates = Vec::new();
 
     let entries = fs::read_dir("/sys/class/hidraw")
@@ -144,7 +184,7 @@ pub fn find(usage_page: u16) -> Result<HidDevice, String> {
         format!(
             "no hidraw node for {:04x}:{:04x} with usage page 0x{:04x} \
              (is the keyboard plugged in over USB-C? the screen is wired-only)",
-            VENDOR_ID, PRODUCT_ID, usage_page
+            vid, pid, usage_page
         )
     })?;
 

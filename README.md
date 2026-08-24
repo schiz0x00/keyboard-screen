@@ -106,3 +106,32 @@ transport are all in-tree.
 | `src/api.rs` | OAuth token handling and the usage ping |
 | `src/state.rs` | snapshot provenance and the fallback chain |
 | `src/json.rs` | minimal JSON parser/serializer |
+
+## Wireless
+
+The screen is **wired-only** in practice.
+
+The 2.4GHz dongle (`05ac:024f` — it reports Apple's vendor id, so `lsusb` calls
+it an Apple keyboard) does expose two vendor pages: `0xff59` command, 64-byte
+reports, and `0xff60` raw, **32-byte** reports. That 32 is the obstacle — wired,
+the raw pipe is 4096 bytes, so a frame is 9 chunks; wireless it would be ~1032
+packets, and the `04 72` metadata packet counts chunks in 4096-byte units. The
+wired framing cannot be what the firmware expects over the air.
+
+The wireless protocol is also a different vocabulary, not the wired one on a
+narrower pipe: 32-byte packets, opcodes `05`/`07`/`0f`/`20`, an `aa 55` marker
+and a checksum at byte 31. Every open-source driver implements only RGB,
+battery, and settings over wireless, and gates image upload on a wired link.
+
+Over Bluetooth, the vendor collections that carry pixel data are not exposed at
+all; treat it as unavailable.
+
+`--probe-wireless` investigates the dongle read-only. It writes exactly one
+thing — the battery query documented by the existing drivers — and otherwise
+just listens. It deliberately does not fire wired `04 xx` opcodes at the
+wireless channel: they are undefined there, and their wired neighbours
+(`04 19`, `04 15`, `04 11`) are the factory-reset sequence.
+
+Run it with the keyboard switched to 2.4G mode; a battery reply means the
+channel is live and the image path is worth reverse-engineering from a USB
+capture of the vendor software.

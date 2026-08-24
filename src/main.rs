@@ -6,6 +6,7 @@ mod display;
 mod font;
 mod hid;
 mod json;
+mod probe;
 mod render;
 mod state;
 mod usage;
@@ -26,6 +27,7 @@ OPTIONS:
     -o, --preview FILE   Also write the frame as a PPM image for inspection
         --dry-run        Render but do not touch the keyboard
     -v, --verbose        Log what is happening
+        --probe-wireless Investigate the 2.4GHz dongle (read-only) and exit
     -h, --help           Show this help
 
 Usage is read from the anthropic-ratelimit-unified-* headers of a ~9-token
@@ -83,6 +85,13 @@ fn parse_args() -> Result<Args, String> {
                 a.preview = Some(argv.get(i).ok_or("--preview needs a path")?.clone());
             }
             "--dry-run" => a.dry_run = true,
+            "--probe-wireless" => {
+                if let Err(e) = crate::probe::run(10) {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+                std::process::exit(0);
+            }
             "-v" | "--verbose" => a.verbose = true,
             other => return Err(format!("unknown option: {other}")),
         }
