@@ -133,10 +133,6 @@ fn wireless_command(v: &WirelessVariant, a: u8, b: u8) -> Vec<u8> {
     p
 }
 
-/// Chunk size on the 2.4GHz raw pipe. The dongle's `0xff60` interface declares
-/// 32-byte reports where the wired `0xff68` declares 4096.
-const WIRELESS_CHUNK_LEN: usize = 32;
-
 /// Push a frame over the 2.4GHz dongle.
 ///
 /// THIS CANNOT WORK, and is retained only as a record of what was tried.

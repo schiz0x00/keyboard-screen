@@ -95,11 +95,6 @@ impl Canvas {
         cx - scale as i32
     }
 
-    pub fn text_centered(&mut self, y: i32, text: &str, scale: usize, c: Rgb) {
-        let x = (W as i32 - crate::font::text_width(text, scale) as i32) / 2;
-        self.text(x, y, text, scale, c);
-    }
-
     pub fn text_right(&mut self, right: i32, y: i32, text: &str, scale: usize, c: Rgb) {
         let x = right - font::text_width(text, scale) as i32;
         self.text(x, y, text, scale, c);
