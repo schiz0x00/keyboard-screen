@@ -5,6 +5,15 @@ All notable changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-24
+
+### Fixed
+
+- Release notes now describe the actual changes. The release job cloned
+  shallowly, so it could not see previous tags and labelled every release
+  "First release". Notes are now taken from this changelog, falling back to the
+  commit log.
+
 ## [0.1.1] - 2026-08-24
 
 ### Fixed
@@ -40,6 +49,7 @@ First release.
 - Wireless RGB byte order is R, G, B at bytes 4, 5, 6 — both existing
   open-source drivers have red and blue swapped.
 
-[Unreleased]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/schiz0x00/keyboard-screen/releases/tag/v0.1.0

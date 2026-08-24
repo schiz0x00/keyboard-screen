@@ -56,6 +56,10 @@ jobs:
       VERSION: ${{ needs.gate.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags and full history are needed to work out what changed since the
+          # previous release; a shallow clone silently produces "First release".
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -84,14 +88,30 @@ jobs:
             echo "curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh | sh"
             echo '```'
             echo
-            prev="$(git tag --sort=-v:refname | grep -v "^v${VERSION}$" | head -n1)"
-            if [ -n "$prev" ]; then
-              echo "## Changes since ${prev}"
-              echo
-              git log --no-merges --pretty='- %s' "${prev}..HEAD"
+
+            # Prefer the hand-written changelog entry for this version; fall
+            # back to the commit log when there is not one.
+            notes="$(awk -v v="$VERSION" '
+              $0 ~ "^## \\[" v "\\]" {inside=1; next}
+              inside && /^## \[/ {exit}
+              inside {print}
+            ' CHANGELOG.md | sed '/^$/{ N; /^\n$/D; }')"
+
+            if [ -n "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
+              echo "## What changed"
+              printf '%s\n' "$notes"
             else
-              echo "First release."
+              prev="$(git tag --sort=-v:refname | grep -v "^v${VERSION}$" | head -n1)"
+              if [ -n "$prev" ]; then
+                echo "## Changes since ${prev}"
+                echo
+                git log --no-merges --pretty='- %s' "${prev}..HEAD"
+              else
+                echo "First release."
+              fi
             fi
+            echo
+            echo "**Full changelog:** https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md"
             echo
             echo "Verify a download against \`SHA256SUMS\`."
           } > notes.md
