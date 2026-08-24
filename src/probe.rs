@@ -49,6 +49,59 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
 }
 
+/// Documented wireless RGB packets, from the existing open-source drivers.
+/// Used to answer one question: does the keyboard ACT on a wireless write?
+fn rgb_commit() -> Vec<u8> {
+    let mut p = vec![0u8; 32];
+    p[0] = 0x0f;
+    checksum(&mut p, 31);
+    p
+}
+
+fn rgb_set(mode: u8, brightness: u8, color: u32) -> Vec<u8> {
+    let mut p = vec![0u8; 32];
+    p[0] = 0x05;
+    p[1] = 0x10;
+    p[3] = mode;
+    p[4] = (color & 0xff) as u8;
+    p[5] = ((color >> 8) & 0xff) as u8;
+    p[6] = ((color >> 16) & 0xff) as u8;
+    p[11] = 0; // not "colorful" - use the fixed colour we passed
+    p[12] = brightness;
+    p[13] = 3; // speed
+    p[14] = 0; // direction
+    p[17] = 0xaa;
+    p[18] = 0x55;
+    checksum(&mut p, 31);
+    p
+}
+
+/// Drive the RGB over 2.4GHz with the documented packets. If the lighting
+/// changes, wireless writes reach the firmware and only the display opcode is
+/// wrong; if nothing happens, the dongle does not accept host commands at all
+/// and no amount of guessing at display framing will help.
+pub fn write_test() -> Result<(), String> {
+    let mut dev = hid::find_on(
+        hid::DONGLE_VENDOR_ID,
+        hid::DONGLE_PRODUCT_ID,
+        hid::WIRELESS_RAW_USAGE_PAGE,
+    )?;
+    println!("Driving RGB over 2.4GHz on {} using documented opcodes.", dev.path.display());
+    println!("Watch the keyboard lighting.\n");
+
+    for (name, color) in [("RED", 0xff0000u32), ("GREEN", 0x00ff00), ("BLUE", 0x0000ff)] {
+        println!("  -> solid {name}");
+        dev.send_output(&rgb_commit()).map_err(|e| format!("commit: {e}"))?;
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        // mode 1 is the first non-off effect; brightness 5 is max.
+        dev.send_output(&rgb_set(1, 5, color)).map_err(|e| format!("set: {e}"))?;
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+    }
+    println!("\nDid the lighting change? That answers whether wireless writes land.");
+    println!("Restore your normal lighting from the vendor software or the keyboard shortcuts.");
+    Ok(())
+}
+
 pub fn run(listen_secs: u64) -> Result<(), String> {
     println!("== Aula F75 Max 2.4GHz probe (read-only) ==\n");
 

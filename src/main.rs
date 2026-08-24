@@ -26,8 +26,13 @@ OPTIONS:
     -n, --no-refresh     Do not ping the API; use cached / Claude Code data only
     -o, --preview FILE   Also write the frame as a PPM image for inspection
         --dry-run        Render but do not touch the keyboard
+        --test-pattern   Push an unmistakable test frame instead of the dashboard
+        --wireless       Push over the 2.4GHz dongle instead of USB (EXPERIMENTAL:
+                         the wireless framing is inferred, not confirmed)
     -v, --verbose        Log what is happening
         --probe-wireless Investigate the 2.4GHz dongle (read-only) and exit
+        --probe-write    Drive the RGB over 2.4GHz with documented opcodes, to test
+                         whether the keyboard acts on wireless writes at all
     -h, --help           Show this help
 
 Usage is read from the anthropic-ratelimit-unified-* headers of a ~9-token
@@ -42,6 +47,8 @@ struct Args {
     preview: Option<String>,
     dry_run: bool,
     verbose: bool,
+    wireless: bool,
+    test_pattern: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -52,6 +59,8 @@ fn parse_args() -> Result<Args, String> {
         preview: None,
         dry_run: false,
         verbose: false,
+        wireless: false,
+        test_pattern: false,
     };
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -85,6 +94,15 @@ fn parse_args() -> Result<Args, String> {
                 a.preview = Some(argv.get(i).ok_or("--preview needs a path")?.clone());
             }
             "--dry-run" => a.dry_run = true,
+            "--wireless" => a.wireless = true,
+            "--test-pattern" => a.test_pattern = true,
+            "--probe-write" => {
+                if let Err(e) = crate::probe::write_test() {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+                std::process::exit(0);
+            }
             "--probe-wireless" => {
                 if let Err(e) = crate::probe::run(10) {
                     eprintln!("error: {e}");
@@ -122,6 +140,20 @@ fn main() {
 
 /// One refresh-render-upload cycle.
 fn tick(args: &Args) -> Result<(), String> {
+    if args.test_pattern {
+        let tag = if args.wireless { "2.4G" } else { "USB" };
+        let canvas = render::test_pattern(tag);
+        if args.dry_run {
+            return args.preview.as_ref().map_or(Ok(()), |p| write_ppm(p, &canvas));
+        }
+        let stream = display::encode(&canvas);
+        return if args.wireless {
+            display::upload_wireless(&stream, args.slot, args.verbose)
+        } else {
+            display::upload(&stream, args.slot, args.verbose)
+        };
+    }
+
     let snap = collect(args);
     if args.verbose {
         eprintln!(
@@ -144,7 +176,23 @@ fn tick(args: &Args) -> Result<(), String> {
     if args.dry_run {
         return Ok(());
     }
-    display::upload(&display::encode(&canvas), args.slot, args.verbose)
+    let stream = display::encode(&canvas);
+    if args.wireless {
+        return display::upload_wireless(&stream, args.slot, args.verbose);
+    }
+    match display::upload(&stream, args.slot, args.verbose) {
+        Ok(()) => Ok(()),
+        // The screen is wired-only, so a keyboard on 2.4G or Bluetooth simply
+        // has no endpoint to write to. That is the expected state half the
+        // time, not a fault - keep the last frame and say so once.
+        Err(e) if hid::find(hid::RAW_USAGE_PAGE).is_err() => {
+            if args.verbose {
+                eprintln!("keyboard is not on USB; screen keeps its last frame ({e})");
+            }
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Live ping first; fall back through our cache to Claude Code's own file, so

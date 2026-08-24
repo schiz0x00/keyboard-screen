@@ -91,3 +91,28 @@ fn block(c: &mut Canvas, top: i32, label: &str, metric: Option<Metric>) {
     };
     c.text(MARGIN, bar_y + BAR_H + 4, &reset, 1, MUTED);
 }
+
+/// An unmistakable frame, for confirming that an upload actually landed.
+///
+/// Verifying a transport with the real dashboard is unreliable - if the numbers
+/// have not moved, a successful push and a silently dropped one look the same.
+pub fn test_pattern(tag: &str) -> Canvas {
+    let mut c = Canvas::new(ACCENT);
+    // Checkerboard border, so a partial or byte-swapped transfer is obvious.
+    for y in 0..(W as i32) {
+        for x in 0..(W as i32) {
+            let edge = x < 8 || y < 8 || x >= W as i32 - 8 || y >= W as i32 - 8;
+            if edge && ((x / 8) + (y / 8)) % 2 == 0 {
+                c.set(x, y, BG);
+            }
+        }
+    }
+    c.fill_rect(16, 40, W as i32 - 32, 48, BG);
+    c.text_right(W as i32 - 22, 50, tag, 2, ACCENT);
+    c.text_right(W as i32 - 22, 70, "TEST", 1, TEXT);
+    // Primary bars: wrong pixel order or endianness shows up as wrong colours.
+    for (i, col) in [OK, WARN, CRIT].iter().enumerate() {
+        c.fill_rect(16 + i as i32 * 32, 96, 28, 12, *col);
+    }
+    c
+}

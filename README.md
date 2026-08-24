@@ -123,8 +123,30 @@ narrower pipe: 32-byte packets, opcodes `05`/`07`/`0f`/`20`, an `aa 55` marker
 and a checksum at byte 31. Every open-source driver implements only RGB,
 battery, and settings over wireless, and gates image upload on a wired link.
 
-Over Bluetooth, the vendor collections that carry pixel data are not exposed at
-all; treat it as unavailable.
+Over Bluetooth it is not merely unimplemented: the vendor software refuses it
+too — its own UI string reads *"keyboard settings are not supported in Bluetooth
+mode for now. Please use the USB or 2.4 GHz connection."*
+
+The vendor software does treat 2.4GHz as a full mode (`config.xml` declares
+`mode value="2"` for the dongle at `05AC:024F`, interface `MI_03`), and its HID
+write takes the transfer length from the open interface's report length at
+runtime rather than a hardcoded 4096 — so one upload path plausibly serves both
+transports. On that basis `--wireless` reuses the wired opcodes against the
+wireless channels.
+
+**It does not work.** The writes are accepted by the kernel and silently
+discarded by the firmware. The likely reason: every known-working wireless
+operation (battery, RGB, key settings) goes over `0xff60` with a different
+envelope — 32 bytes, an `aa 55` marker, and a checksum at byte 31 — and its own
+opcode space (`05` RGB, `07` keys, `0f` commit, `20` battery). The wired display
+commands have neither the envelope nor a known opcode here, so they fail
+validation. Recovering the real one needs decompilation or a USB capture of the
+vendor software, not extrapolation.
+
+`--probe-write` isolates the remaining question by driving the RGB over 2.4GHz
+with documented opcodes: if the lighting responds, wireless writes reach the
+firmware and only the display opcode is unknown; if not, the dongle does not
+accept host commands at all.
 
 `--probe-wireless` investigates the dongle read-only. It writes exactly one
 thing — the battery query documented by the existing drivers — and otherwise
