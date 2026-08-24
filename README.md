@@ -134,14 +134,26 @@ runtime rather than a hardcoded 4096 — so one upload path plausibly serves bot
 transports. On that basis `--wireless` reuses the wired opcodes against the
 wireless channels.
 
-**It does not work.** The writes are accepted by the kernel and silently
-discarded by the firmware. The likely reason: every known-working wireless
-operation (battery, RGB, key settings) goes over `0xff60` with a different
-envelope — 32 bytes, an `aa 55` marker, and a checksum at byte 31 — and its own
-opcode space (`05` RGB, `07` keys, `0f` commit, `20` battery). The wired display
-commands have neither the envelope nor a known opcode here, so they fail
-validation. Recovering the real one needs decompilation or a USB capture of the
-vendor software, not extrapolation.
+**It does not work.** Four framings have been tried on hardware and all were
+accepted by the kernel and silently discarded by the firmware:
+
+| Attempt | Commands | Pixel data | Result |
+|---|---|---|---|
+| initial | `0xff59` 64B, no checksum | `0xff60` 32B | no change |
+| `--variant a` | `0xff60` 32B + checksum | `0xff60` 32B | no change |
+| `--variant b` | `0xff60` 32B + checksum | `0xff59` 64B | no change |
+| `--variant c` | `0xff59` 64B + checksum | `0xff59` 64B | no change |
+
+Variants a–c use the *proven* wireless envelope — the same 32-byte,
+checksum-at-31 shape that the RGB commands use successfully — so the framing is
+not the problem. What remains unknown is the **opcode**: the wired display
+commands are `04 18` / `04 72` / `04 02`, and `0x04` appears to be undefined in
+the wireless opcode space (`05` RGB, `07` keys, `0f` commit, `20` battery).
+
+Recovering the real opcode needs decompilation of the vendor software's LCD send
+path, or a USB capture of it pushing an image while in 2.4G mode. It is not
+recoverable by extrapolation, and guessing opcodes means firing undefined
+instructions at the firmware — so the guessing stopped here.
 
 `--probe-write` isolates the remaining question by driving the RGB over 2.4GHz
 with documented opcodes: if the lighting responds, wireless writes reach the

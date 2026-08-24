@@ -49,6 +49,7 @@ struct Args {
     verbose: bool,
     wireless: bool,
     test_pattern: bool,
+    variant: String,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -61,6 +62,7 @@ fn parse_args() -> Result<Args, String> {
         verbose: false,
         wireless: false,
         test_pattern: false,
+        variant: "a".to_string(),
     };
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -95,6 +97,10 @@ fn parse_args() -> Result<Args, String> {
             }
             "--dry-run" => a.dry_run = true,
             "--wireless" => a.wireless = true,
+            "--variant" => {
+                i += 1;
+                a.variant = argv.get(i).ok_or("--variant needs a letter")?.clone();
+            }
             "--test-pattern" => a.test_pattern = true,
             "--probe-write" => {
                 if let Err(e) = crate::probe::write_test() {
@@ -148,7 +154,7 @@ fn tick(args: &Args) -> Result<(), String> {
         }
         let stream = display::encode(&canvas);
         return if args.wireless {
-            display::upload_wireless(&stream, args.slot, args.verbose)
+            display::upload_wireless(&stream, args.slot, wireless_variant(args)?, args.verbose)
         } else {
             display::upload(&stream, args.slot, args.verbose)
         };
@@ -178,7 +184,7 @@ fn tick(args: &Args) -> Result<(), String> {
     }
     let stream = display::encode(&canvas);
     if args.wireless {
-        return display::upload_wireless(&stream, args.slot, args.verbose);
+        return display::upload_wireless(&stream, args.slot, wireless_variant(args)?, args.verbose);
     }
     match display::upload(&stream, args.slot, args.verbose) {
         Ok(()) => Ok(()),
@@ -258,6 +264,17 @@ fn watch(args: &Args, interval: u64) {
         }
         wall = state::now();
     }
+}
+
+fn wireless_variant(args: &Args) -> Result<&'static display::WirelessVariant, String> {
+    display::WIRELESS_VARIANTS
+        .iter()
+        .find(|(name, _)| *name == args.variant)
+        .map(|(_, v)| v)
+        .ok_or_else(|| {
+            let names: Vec<&str> = display::WIRELESS_VARIANTS.iter().map(|(n, _)| *n).collect();
+            format!("unknown --variant {}; try one of {:?}", args.variant, names)
+        })
 }
 
 /// Binary PPM, for eyeballing the frame without a keyboard attached.

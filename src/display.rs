@@ -85,6 +85,54 @@ fn exchange(dev: &mut HidDevice, packet: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Wireless transport variants.
+///
+/// The firmware demonstrably accepts a 32-byte packet on `0xff60` carrying a
+/// checksum at byte 31 - that is how the RGB commands land. What is not known is
+/// which channel and framing the *pixel* stream uses, so each variant pairs a
+/// command channel with a data channel and the upload is tried against it.
+#[derive(Clone, Copy)]
+pub struct WirelessVariant {
+    pub cmd_page: u16,
+    pub cmd_len: usize,
+    /// Byte index of the checksum in a command packet, if the channel wants one.
+    pub cmd_checksum: Option<usize>,
+    pub data_page: u16,
+    pub data_len: usize,
+}
+
+pub const WIRELESS_VARIANTS: &[(&str, WirelessVariant)] = &[
+    // Commands in the proven RGB envelope; pixels down the same 32-byte pipe.
+    ("a", WirelessVariant {
+        cmd_page: hid::WIRELESS_RAW_USAGE_PAGE, cmd_len: 32, cmd_checksum: Some(31),
+        data_page: hid::WIRELESS_RAW_USAGE_PAGE, data_len: 32,
+    }),
+    // Commands in the proven envelope; pixels down the wider 64-byte channel.
+    ("b", WirelessVariant {
+        cmd_page: hid::WIRELESS_RAW_USAGE_PAGE, cmd_len: 32, cmd_checksum: Some(31),
+        data_page: hid::WIRELESS_COMMAND_USAGE_PAGE, data_len: 64,
+    }),
+    // Both on the 64-byte channel, checksummed like the wireless packets.
+    ("c", WirelessVariant {
+        cmd_page: hid::WIRELESS_COMMAND_USAGE_PAGE, cmd_len: 64, cmd_checksum: Some(31),
+        data_page: hid::WIRELESS_COMMAND_USAGE_PAGE, data_len: 64,
+    }),
+];
+
+fn wireless_command(v: &WirelessVariant, a: u8, b: u8) -> Vec<u8> {
+    let mut p = vec![0u8; v.cmd_len];
+    p[0] = a;
+    p[1] = b;
+    if let Some(idx) = v.cmd_checksum {
+        if idx < p.len() {
+            p[idx] = 0;
+            let sum = p.iter().fold(0u32, |acc, x| acc + *x as u32) & 0xff;
+            p[idx] = sum as u8;
+        }
+    }
+    p
+}
+
 /// Chunk size on the 2.4GHz raw pipe. The dongle's `0xff60` interface declares
 /// 32-byte reports where the wired `0xff68` declares 4096.
 const WIRELESS_CHUNK_LEN: usize = 32;
@@ -102,51 +150,50 @@ const WIRELESS_CHUNK_LEN: usize = 32;
 /// descriptors: the wireless command interface declares no Feature report, so
 /// commands go out as Output reports; and the raw pipe is 32 bytes, so the
 /// chunk count in the metadata packet is computed against 32, not 4096.
-pub fn upload_wireless(stream: &[u8], slot: u8, verbose: bool) -> Result<(), String> {
+pub fn upload_wireless(
+    stream: &[u8],
+    slot: u8,
+    variant: &WirelessVariant,
+    verbose: bool,
+) -> Result<(), String> {
     if slot == 0 {
         return Err("slot must be 1-255".into());
     }
-    // Re-chunk: the payload is built padded to 4096, which is also a multiple
-    // of 32, so the same bytes divide evenly here.
-    let chunk_count = stream.len().div_ceil(WIRELESS_CHUNK_LEN);
+    let chunk_count = stream.len().div_ceil(variant.data_len);
     if chunk_count > 0xffff {
         return Err(format!("{chunk_count} chunks exceeds the u16 metadata field"));
     }
 
-    let mut cmd = hid::find_on(
-        hid::DONGLE_VENDOR_ID,
-        hid::DONGLE_PRODUCT_ID,
-        hid::WIRELESS_COMMAND_USAGE_PAGE,
-    )?;
-    let mut raw = hid::find_on(
-        hid::DONGLE_VENDOR_ID,
-        hid::DONGLE_PRODUCT_ID,
-        hid::WIRELESS_RAW_USAGE_PAGE,
-    )?;
+    let mut cmd = hid::find_on(hid::DONGLE_VENDOR_ID, hid::DONGLE_PRODUCT_ID, variant.cmd_page)?;
+    let mut data = hid::find_on(hid::DONGLE_VENDOR_ID, hid::DONGLE_PRODUCT_ID, variant.data_page)?;
     if verbose {
-        eprintln!("wireless command: {}", cmd.path.display());
-        eprintln!("wireless raw:     {}", raw.path.display());
-        eprintln!("sending {chunk_count} chunks of {WIRELESS_CHUNK_LEN}B to slot {slot}");
+        eprintln!(
+            "cmd 0x{:04x} ({}B) on {} | data 0x{:04x} ({}B) on {} | {} chunks",
+            variant.cmd_page, variant.cmd_len, cmd.path.display(),
+            variant.data_page, variant.data_len, data.path.display(), chunk_count
+        );
     }
 
-    // Commands as Output reports - this interface has no Feature report.
-    cmd.send_output(&command(0x04, 0x18))
+    cmd.send_output(&wireless_command(variant, 0x04, 0x18))
         .map_err(|e| format!("wireless begin: {e}"))?;
 
-    let mut meta = command(0x04, 0x72);
+    let mut meta = wireless_command(variant, 0x04, 0x72);
     meta[2] = slot;
     meta[8] = (chunk_count & 0xff) as u8;
     meta[9] = ((chunk_count >> 8) & 0xff) as u8;
+    if let Some(idx) = variant.cmd_checksum {
+        meta[idx] = 0;
+        let sum = meta.iter().fold(0u32, |a, x| a + *x as u32) & 0xff;
+        meta[idx] = sum as u8;
+    }
     cmd.send_output(&meta).map_err(|e| format!("wireless metadata: {e}"))?;
-    raw.await_ack(WIRELESS_CHUNK_LEN, 150);
+    data.await_ack(variant.data_len, 150);
 
-    for (i, chunk) in stream.chunks(WIRELESS_CHUNK_LEN).enumerate() {
-        raw.send_output(chunk)
+    for (i, chunk) in stream.chunks(variant.data_len).enumerate() {
+        data.send_output(chunk)
             .map_err(|e| format!("chunk {}/{}: {e}", i + 1, chunk_count))?;
-        // A short wait doubles as flow control: 1032 unpaced writes would
-        // outrun the 2.4GHz link.
-        raw.await_ack(WIRELESS_CHUNK_LEN, 5);
-        if verbose && i % 64 == 0 {
+        data.await_ack(variant.data_len, 3);
+        if verbose && i % 128 == 0 {
             eprint!("\r  {}/{}", i + 1, chunk_count);
         }
     }
@@ -154,7 +201,7 @@ pub fn upload_wireless(stream: &[u8], slot: u8, verbose: bool) -> Result<(), Str
         eprintln!("\r  {chunk_count}/{chunk_count}");
     }
 
-    cmd.send_output(&command(0x04, 0x02))
+    cmd.send_output(&wireless_command(variant, 0x04, 0x02))
         .map_err(|e| format!("wireless commit: {e}"))?;
     Ok(())
 }
