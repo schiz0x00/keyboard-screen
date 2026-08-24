@@ -88,9 +88,12 @@ fn load_oauth() -> Result<Oauth, ApiError> {
             path.display()
         ))
     })?;
-    let root = json::parse(&text).map_err(|e| ApiError::Auth(format!("{}: {e}", path.display())))?;
+    let root =
+        json::parse(&text).map_err(|e| ApiError::Auth(format!("{}: {e}", path.display())))?;
     let node = root.get("claudeAiOauth").ok_or_else(|| {
-        ApiError::Auth("credentials file has no claudeAiOauth entry: run `claude` and sign in".into())
+        ApiError::Auth(
+            "credentials file has no claudeAiOauth entry: run `claude` and sign in".into(),
+        )
     })?;
 
     Ok(Oauth {
@@ -104,10 +107,7 @@ fn load_oauth() -> Result<Oauth, ApiError> {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
-        expires_at_ms: node
-            .get("expiresAt")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0) as i64,
+        expires_at_ms: node.get("expiresAt").and_then(Value::as_f64).unwrap_or(0.0) as i64,
     })
 }
 
@@ -224,7 +224,8 @@ fn cli_version() -> String {
             }
         }
     }
-    best.map(|(_, n)| n).unwrap_or_else(|| VERSION_FALLBACK.to_string())
+    best.map(|(_, n)| n)
+        .unwrap_or_else(|| VERSION_FALLBACK.to_string())
 }
 
 /// Send the ping and read the usage windows off its response headers.
@@ -280,7 +281,10 @@ fn ping(oauth: &Oauth) -> Result<Live, ApiError> {
         .header("anthropic-beta", OAUTH_BETA)
         .header("Content-Type", "application/json")
         .header("x-app", "cli")
-        .header("User-Agent", &format!("claude-cli/{} (external, cli)", cli_version()))
+        .header(
+            "User-Agent",
+            &format!("claude-cli/{} (external, cli)", cli_version()),
+        )
         .header("X-Claude-Code-Session-Id", &session_id)
         .send(&body);
 
@@ -300,7 +304,9 @@ fn ping(oauth: &Oauth) -> Result<Live, ApiError> {
         200 => Err(ApiError::Transport(
             "usage ping succeeded but carried no anthropic-ratelimit-unified-* headers".into(),
         )),
-        _ => Err(ApiError::Transport(format!("usage ping failed (HTTP {status})"))),
+        _ => Err(ApiError::Transport(format!(
+            "usage ping failed (HTTP {status})"
+        ))),
     }
 }
 
@@ -337,5 +343,12 @@ fn pseudo_uuid() -> String {
     b[8] = (b[8] & 0x3f) | 0x80;
     let h: Vec<String> = b.iter().map(|x| format!("{x:02x}")).collect();
     let h = h.concat();
-    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
 }

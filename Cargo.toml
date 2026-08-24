@@ -2,7 +2,13 @@
 name = "keyboard-screen"
 version = "0.1.0"
 edition = "2021"
-description = "Render Claude subscription usage limits onto the Epomaker x Aula F75 Max 128x128 keyboard screen"
+description = "Claude usage limits on the Epomaker x Aula F75 Max 128x128 keyboard screen"
+license = "MIT"
+repository = "https://github.com/schiz0x00/keyboard-screen"
+readme = "README.md"
+keywords = ["keyboard", "hid", "claude", "aula", "epomaker"]
+categories = ["command-line-utilities"]
+rust-version = "1.85"
 
 [dependencies]
 libc = "0.2"

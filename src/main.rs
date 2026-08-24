@@ -34,6 +34,7 @@ OPTIONS:
         --probe-write    Drive the RGB over 2.4GHz with documented opcodes, to test
                          whether the keyboard acts on wireless writes at all
     -h, --help           Show this help
+    -V, --version        Show the version
 
 Usage is read from the anthropic-ratelimit-unified-* headers of a ~9-token
 Haiku ping, authenticated with the Claude Code OAuth token. It spends
@@ -68,6 +69,10 @@ fn parse_args() -> Result<Args, String> {
     let mut i = 0;
     while i < argv.len() {
         match argv[i].as_str() {
+            "-V" | "--version" => {
+                println!("keyboard-screen {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
             "-h" | "--help" => {
                 print!("{USAGE}");
                 std::process::exit(0);
@@ -150,7 +155,10 @@ fn tick(args: &Args) -> Result<(), String> {
         let tag = if args.wireless { "2.4G" } else { "USB" };
         let canvas = render::test_pattern(tag);
         if args.dry_run {
-            return args.preview.as_ref().map_or(Ok(()), |p| write_ppm(p, &canvas));
+            return args
+                .preview
+                .as_ref()
+                .map_or(Ok(()), |p| write_ppm(p, &canvas));
         }
         let stream = display::encode(&canvas);
         return if args.wireless {

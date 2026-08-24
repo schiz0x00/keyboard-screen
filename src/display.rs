@@ -103,20 +103,38 @@ pub struct WirelessVariant {
 
 pub const WIRELESS_VARIANTS: &[(&str, WirelessVariant)] = &[
     // Commands in the proven RGB envelope; pixels down the same 32-byte pipe.
-    ("a", WirelessVariant {
-        cmd_page: hid::WIRELESS_RAW_USAGE_PAGE, cmd_len: 32, cmd_checksum: Some(31),
-        data_page: hid::WIRELESS_RAW_USAGE_PAGE, data_len: 32,
-    }),
+    (
+        "a",
+        WirelessVariant {
+            cmd_page: hid::WIRELESS_RAW_USAGE_PAGE,
+            cmd_len: 32,
+            cmd_checksum: Some(31),
+            data_page: hid::WIRELESS_RAW_USAGE_PAGE,
+            data_len: 32,
+        },
+    ),
     // Commands in the proven envelope; pixels down the wider 64-byte channel.
-    ("b", WirelessVariant {
-        cmd_page: hid::WIRELESS_RAW_USAGE_PAGE, cmd_len: 32, cmd_checksum: Some(31),
-        data_page: hid::WIRELESS_COMMAND_USAGE_PAGE, data_len: 64,
-    }),
+    (
+        "b",
+        WirelessVariant {
+            cmd_page: hid::WIRELESS_RAW_USAGE_PAGE,
+            cmd_len: 32,
+            cmd_checksum: Some(31),
+            data_page: hid::WIRELESS_COMMAND_USAGE_PAGE,
+            data_len: 64,
+        },
+    ),
     // Both on the 64-byte channel, checksummed like the wireless packets.
-    ("c", WirelessVariant {
-        cmd_page: hid::WIRELESS_COMMAND_USAGE_PAGE, cmd_len: 64, cmd_checksum: Some(31),
-        data_page: hid::WIRELESS_COMMAND_USAGE_PAGE, data_len: 64,
-    }),
+    (
+        "c",
+        WirelessVariant {
+            cmd_page: hid::WIRELESS_COMMAND_USAGE_PAGE,
+            cmd_len: 64,
+            cmd_checksum: Some(31),
+            data_page: hid::WIRELESS_COMMAND_USAGE_PAGE,
+            data_len: 64,
+        },
+    ),
 ];
 
 fn wireless_command(v: &WirelessVariant, a: u8, b: u8) -> Vec<u8> {
@@ -166,16 +184,31 @@ pub fn upload_wireless(
     }
     let chunk_count = stream.len().div_ceil(variant.data_len);
     if chunk_count > 0xffff {
-        return Err(format!("{chunk_count} chunks exceeds the u16 metadata field"));
+        return Err(format!(
+            "{chunk_count} chunks exceeds the u16 metadata field"
+        ));
     }
 
-    let mut cmd = hid::find_on(hid::DONGLE_VENDOR_ID, hid::DONGLE_PRODUCT_ID, variant.cmd_page)?;
-    let mut data = hid::find_on(hid::DONGLE_VENDOR_ID, hid::DONGLE_PRODUCT_ID, variant.data_page)?;
+    let mut cmd = hid::find_on(
+        hid::DONGLE_VENDOR_ID,
+        hid::DONGLE_PRODUCT_ID,
+        variant.cmd_page,
+    )?;
+    let mut data = hid::find_on(
+        hid::DONGLE_VENDOR_ID,
+        hid::DONGLE_PRODUCT_ID,
+        variant.data_page,
+    )?;
     if verbose {
         eprintln!(
             "cmd 0x{:04x} ({}B) on {} | data 0x{:04x} ({}B) on {} | {} chunks",
-            variant.cmd_page, variant.cmd_len, cmd.path.display(),
-            variant.data_page, variant.data_len, data.path.display(), chunk_count
+            variant.cmd_page,
+            variant.cmd_len,
+            cmd.path.display(),
+            variant.data_page,
+            variant.data_len,
+            data.path.display(),
+            chunk_count
         );
     }
 
@@ -191,7 +224,8 @@ pub fn upload_wireless(
         let sum = meta.iter().fold(0u32, |a, x| a + *x as u32) & 0xff;
         meta[idx] = sum as u8;
     }
-    cmd.send_output(&meta).map_err(|e| format!("wireless metadata: {e}"))?;
+    cmd.send_output(&meta)
+        .map_err(|e| format!("wireless metadata: {e}"))?;
     data.await_ack(variant.data_len, 150);
 
     for (i, chunk) in stream.chunks(variant.data_len).enumerate() {
@@ -209,4 +243,42 @@ pub fn upload_wireless(
     cmd.send_output(&wireless_command(variant, 0x04, 0x02))
         .map_err(|e| format!("wireless commit: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::canvas::{Canvas, Rgb};
+
+    #[test]
+    fn encodes_one_frame_padded_to_whole_chunks() {
+        let stream = encode(&Canvas::new(Rgb(0, 0, 0)));
+        // 256-byte header + 128*128*2 pixels = 33024, padded up to 9 * 4096.
+        assert_eq!(stream.len(), 9 * CHUNK_LEN);
+        assert_eq!(stream.len() % CHUNK_LEN, 0);
+        assert_eq!(stream[0], 1, "frame count");
+        assert_eq!(stream[1], 100, "frame delay");
+        assert!(
+            stream[2..HEADER_LEN].iter().all(|b| *b == 0),
+            "header tail is zero"
+        );
+    }
+
+    #[test]
+    fn pixels_start_immediately_after_the_header() {
+        let mut c = Canvas::new(Rgb(0, 0, 0));
+        c.set(0, 0, Rgb(0xff, 0xff, 0xff));
+        let stream = encode(&c);
+        assert_eq!(&stream[HEADER_LEN..HEADER_LEN + 2], &[0xff, 0xff]);
+        assert_eq!(&stream[HEADER_LEN + 2..HEADER_LEN + 4], &[0x00, 0x00]);
+    }
+
+    #[test]
+    fn command_packets_match_the_wire_format() {
+        let p = command(0x04, 0x72);
+        assert_eq!(p.len(), COMMAND_LEN);
+        assert_eq!(p[0], 0x04);
+        assert_eq!(p[1], 0x72);
+        assert!(p[2..].iter().all(|b| *b == 0));
+    }
 }

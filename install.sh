@@ -1,14 +1,14 @@
 #!/bin/sh
 # Install keyboard-screen: Claude usage limits on the Aula F75 Max screen.
 #
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/keyboard-screen/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/schiz0x00/keyboard-screen/main/install.sh | sh
 #
 # Fetches the latest release binary; falls back to building from source when no
 # release is available or the machine is not x86_64. Then installs the udev rule
 # so the screen is writable without root.
 set -eu
 
-REPO="${KEYBOARD_SCREEN_REPO:-OWNER/keyboard-screen}"
+REPO="${KEYBOARD_SCREEN_REPO:-schiz0x00/keyboard-screen}"
 BIN_DIR="${KEYBOARD_SCREEN_BIN_DIR:-$HOME/.local/bin}"
 UDEV_RULE="/etc/udev/rules.d/99-aula-f75max.rules"
 SKIP_UDEV="${KEYBOARD_SCREEN_SKIP_UDEV:-0}"

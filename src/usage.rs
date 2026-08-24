@@ -67,7 +67,10 @@ fn metric(root: &Value, path: &str, now: i64) -> Option<Metric> {
         .and_then(parse_rfc3339)
         .map(|t| t - now);
 
-    Some(Metric { percent_used, resets_in })
+    Some(Metric {
+        percent_used,
+        resets_in,
+    })
 }
 
 fn unix_now() -> i64 {
@@ -103,9 +106,16 @@ pub fn parse_rfc3339(s: &str) -> Option<i64> {
     match b.get(i) {
         None | Some(b'Z') | Some(b'z') => {}
         Some(&sign @ (b'+' | b'-')) => {
-            let oh: i64 = std::str::from_utf8(b.get(i + 1..i + 3)?).ok()?.parse().ok()?;
+            let oh: i64 = std::str::from_utf8(b.get(i + 1..i + 3)?)
+                .ok()?
+                .parse()
+                .ok()?;
             // Both `+01:00` and `+0100` appear in the wild.
-            let mstart = if b.get(i + 3) == Some(&b':') { i + 4 } else { i + 3 };
+            let mstart = if b.get(i + 3) == Some(&b':') {
+                i + 4
+            } else {
+                i + 3
+            };
             let om: i64 = std::str::from_utf8(b.get(mstart..mstart + 2)?)
                 .ok()?
                 .parse()
@@ -144,5 +154,51 @@ pub fn human_duration(seconds: i64) -> String {
         format!("{m}M")
     } else {
         format!("{seconds}S")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_both_timestamp_forms_claude_code_writes() {
+        // 2026-08-24T00:00:00Z
+        let base = parse_rfc3339("2026-08-24T00:00:00Z").unwrap();
+        assert_eq!(parse_rfc3339("2026-08-24T00:06:25Z").unwrap(), base + 385);
+        // Fractional seconds and an explicit +00:00 offset must agree with Z.
+        assert_eq!(
+            parse_rfc3339("2026-08-24T00:00:00.143063+00:00").unwrap(),
+            base
+        );
+        // A real offset shifts the instant.
+        assert_eq!(parse_rfc3339("2026-08-24T03:00:00+03:00").unwrap(), base);
+        assert_eq!(parse_rfc3339("2026-08-23T21:00:00-03:00").unwrap(), base);
+        // The compact offset form appears in the wild too.
+        assert_eq!(parse_rfc3339("2026-08-24T03:00:00+0300").unwrap(), base);
+    }
+
+    #[test]
+    fn epoch_anchor_is_correct() {
+        assert_eq!(parse_rfc3339("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_rfc3339("2000-03-01T00:00:00Z"), Some(951_868_800));
+    }
+
+    #[test]
+    fn rejects_junk_timestamps() {
+        for bad in ["", "not-a-date", "2026-08-24", "2026-08-24T00:00"] {
+            assert_eq!(parse_rfc3339(bad), None, "should have rejected {bad}");
+        }
+    }
+
+    #[test]
+    fn formats_durations_compactly() {
+        assert_eq!(human_duration(0), "NOW");
+        assert_eq!(human_duration(-5), "NOW");
+        assert_eq!(human_duration(45), "45S");
+        assert_eq!(human_duration(90), "1M");
+        assert_eq!(human_duration(3600), "1H00M");
+        assert_eq!(human_duration(4 * 3600 + 49 * 60), "4H49M");
+        assert_eq!(human_duration(50 * 3600), "2D2H");
     }
 }

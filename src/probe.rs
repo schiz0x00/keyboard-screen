@@ -46,7 +46,11 @@ fn checksum(bytes: &mut [u8], index: usize) {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
+    bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Documented wireless RGB packets, from the existing open-source drivers.
@@ -90,15 +94,24 @@ pub fn write_test() -> Result<(), String> {
         hid::DONGLE_PRODUCT_ID,
         hid::WIRELESS_RAW_USAGE_PAGE,
     )?;
-    println!("Driving RGB over 2.4GHz on {} using documented opcodes.", dev.path.display());
+    println!(
+        "Driving RGB over 2.4GHz on {} using documented opcodes.",
+        dev.path.display()
+    );
     println!("Watch the keyboard lighting.\n");
 
-    for (name, color) in [("RED", 0xff0000u32), ("GREEN", 0x00ff00), ("BLUE", 0x0000ff)] {
+    for (name, color) in [
+        ("RED", 0xff0000u32),
+        ("GREEN", 0x00ff00),
+        ("BLUE", 0x0000ff),
+    ] {
         println!("  -> solid {name}");
-        dev.send_output(&rgb_commit()).map_err(|e| format!("commit: {e}"))?;
+        dev.send_output(&rgb_commit())
+            .map_err(|e| format!("commit: {e}"))?;
         std::thread::sleep(std::time::Duration::from_millis(60));
         // mode 1 is the first non-off effect; brightness 5 is max.
-        dev.send_output(&rgb_set(1, 5, color)).map_err(|e| format!("set: {e}"))?;
+        dev.send_output(&rgb_set(1, 5, color))
+            .map_err(|e| format!("set: {e}"))?;
         std::thread::sleep(std::time::Duration::from_millis(1200));
     }
     println!("\nDid the lighting change? That answers whether wireless writes land.");
@@ -145,11 +158,21 @@ pub fn run(listen_secs: u64) -> Result<(), String> {
                 continue;
             }
             if let Some(reply) = raw.read_input(512, 250) {
-                println!("  len={len:<3} report_id={with_id:<5} <- {}", hex(&reply[..reply.len().min(16)]));
+                println!(
+                    "  len={len:<3} report_id={with_id:<5} <- {}",
+                    hex(&reply[..reply.len().min(16)])
+                );
                 // Documented shape: 20 01 xx <percent>.
-                let body = if reply[0] == 0x00 { &reply[1..] } else { &reply[..] };
+                let body = if reply[0] == 0x00 {
+                    &reply[1..]
+                } else {
+                    &reply[..]
+                };
                 if body.len() >= 4 && body[0] == 0x20 && body[1] == 0x01 {
-                    println!("\n  BATTERY: {}% - the dongle is talking to the keyboard.", body[3]);
+                    println!(
+                        "\n  BATTERY: {}% - the dongle is talking to the keyboard.",
+                        body[3]
+                    );
                     answered = true;
                 }
             }

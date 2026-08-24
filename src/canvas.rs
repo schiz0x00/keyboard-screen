@@ -6,7 +6,7 @@ use crate::font;
 pub const W: usize = 128;
 pub const H: usize = 128;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 pub struct Canvas {
@@ -15,7 +15,9 @@ pub struct Canvas {
 
 impl Canvas {
     pub fn new(bg: Rgb) -> Self {
-        Self { pixels: vec![bg; W * H] }
+        Self {
+            pixels: vec![bg; W * H],
+        }
     }
 
     #[inline]
@@ -104,11 +106,57 @@ impl Canvas {
     pub fn to_rgb565(&self, out: &mut [u8]) {
         debug_assert_eq!(out.len(), W * H * 2);
         for (i, px) in self.pixels.iter().enumerate() {
-            let v = (((px.0 as u16) >> 3) << 11)
-                | (((px.1 as u16) >> 2) << 5)
-                | ((px.2 as u16) >> 3);
+            let v =
+                (((px.0 as u16) >> 3) << 11) | (((px.1 as u16) >> 2) << 5) | ((px.2 as u16) >> 3);
             out[i * 2] = (v & 0xff) as u8;
             out[i * 2 + 1] = (v >> 8) as u8;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packs_rgb565_little_endian() {
+        let mut c = Canvas::new(Rgb(0, 0, 0));
+        c.set(0, 0, Rgb(0xff, 0x00, 0x00)); // red   -> 0xf800
+        c.set(1, 0, Rgb(0x00, 0xff, 0x00)); // green -> 0x07e0
+        c.set(2, 0, Rgb(0x00, 0x00, 0xff)); // blue  -> 0x001f
+        c.set(3, 0, Rgb(0xff, 0xff, 0xff)); // white -> 0xffff
+
+        let mut out = vec![0u8; W * H * 2];
+        c.to_rgb565(&mut out);
+        assert_eq!(&out[0..2], &[0x00, 0xf8]);
+        assert_eq!(&out[2..4], &[0xe0, 0x07]);
+        assert_eq!(&out[4..6], &[0x1f, 0x00]);
+        assert_eq!(&out[6..8], &[0xff, 0xff]);
+    }
+
+    #[test]
+    fn drawing_outside_the_canvas_is_ignored() {
+        let mut c = Canvas::new(Rgb(0, 0, 0));
+        c.set(-1, 0, Rgb(255, 255, 255));
+        c.set(0, -1, Rgb(255, 255, 255));
+        c.set(W as i32, 0, Rgb(255, 255, 255));
+        c.fill_rect(-10, -10, 5, 5, Rgb(255, 255, 255));
+        let mut out = vec![0u8; W * H * 2];
+        c.to_rgb565(&mut out);
+        assert!(
+            out.iter().all(|b| *b == 0),
+            "nothing should have been drawn"
+        );
+    }
+
+    #[test]
+    fn fill_rect_covers_exactly_its_bounds() {
+        let mut c = Canvas::new(Rgb(0, 0, 0));
+        c.fill_rect(2, 3, 4, 5, Rgb(255, 255, 255));
+        assert_eq!(c.get(2, 3), Rgb(255, 255, 255));
+        assert_eq!(c.get(5, 7), Rgb(255, 255, 255));
+        assert_eq!(c.get(1, 3), Rgb(0, 0, 0));
+        assert_eq!(c.get(6, 7), Rgb(0, 0, 0));
+        assert_eq!(c.get(2, 8), Rgb(0, 0, 0));
     }
 }

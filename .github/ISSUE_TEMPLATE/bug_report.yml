@@ -1,0 +1,27 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect instead?
+    validations: {required: true}
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How is the keyboard connected?
+      description: The screen is wired-only - see docs/wireless-re.md.
+      options: [USB-C (wired), 2.4GHz dongle, Bluetooth]
+    validations: {required: true}
+  - type: textarea
+    id: output
+    attributes:
+      label: Output of `keyboard-screen -v`
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `keyboard-screen --version`, or the release you installed.

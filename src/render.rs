@@ -44,7 +44,10 @@ pub fn dashboard(snap: &Snapshot) -> Canvas {
     let (footer, color) = match (snap.source, snap.age) {
         (Source::Live, _) => ("LIVE".to_string(), MUTED),
         (src, age) if age > 900 => (format!("{} {}", src.label(), human_duration(age)), CRIT),
-        (src, age) => (format!("{} {}", src.label(), human_duration(age.max(1))), WARN),
+        (src, age) => (
+            format!("{} {}", src.label(), human_duration(age.max(1))),
+            WARN,
+        ),
     };
     c.text(MARGIN, 120, &footer, 1, color);
     c

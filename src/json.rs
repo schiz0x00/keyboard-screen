@@ -265,9 +265,69 @@ pub fn to_string(v: &Value) -> String {
             format!("[{}]", items.join(","))
         }
         Value::Obj(m) => {
-            let items: Vec<String> =
-                m.iter().map(|(k, v)| format!("{}:{}", quote(k), to_string(v))).collect();
+            let items: Vec<String> = m
+                .iter()
+                .map(|(k, v)| format!("{}:{}", quote(k), to_string(v)))
+                .collect();
             format!("{{{}}}", items.join(","))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_the_usage_document_shape() {
+        let v = parse(
+            r#"{"timestamp":"2026-08-24T00:06:25Z","metrics":{"session":{"percent_used":12.5,
+               "resets_at":"2026-08-24T00:10:00.143043+00:00"},"week_sonnet":null}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            v.path("metrics.session.percent_used").unwrap().as_f64(),
+            Some(12.5)
+        );
+        assert_eq!(v.path("metrics.week_sonnet"), Some(&Value::Null));
+        assert_eq!(v.path("metrics.session.nope"), None);
+    }
+
+    #[test]
+    fn handles_escapes_and_unicode() {
+        let v = parse(r#"{"a":"x\"y\\z\n","b":"\u00e9","c":"héllo"}"#).unwrap();
+        assert_eq!(v.get("a").unwrap().as_str(), Some("x\"y\\z\n"));
+        assert_eq!(v.get("b").unwrap().as_str(), Some("é"));
+        assert_eq!(v.get("c").unwrap().as_str(), Some("héllo"));
+    }
+
+    #[test]
+    fn rejects_malformed_input() {
+        for bad in [
+            r#"{"a":}"#,
+            r#"{"a" 1}"#,
+            r#"{"a":1"#,
+            r#"{}extra"#,
+            r#""unterminated"#,
+        ] {
+            assert!(parse(bad).is_err(), "should have rejected {bad}");
+        }
+    }
+
+    #[test]
+    fn round_trips_without_turning_integers_into_floats() {
+        // expiresAt is a large integer; rewriting it as 1.7e12 would corrupt
+        // the credentials file we do not own.
+        let v = parse(r#"{"expiresAt":1756000000000,"ratio":0.5}"#).unwrap();
+        let out = to_string(&v);
+        assert!(out.contains("\"expiresAt\":1756000000000"), "got {out}");
+        assert!(out.contains("\"ratio\":0.5"), "got {out}");
+        assert_eq!(parse(&out).unwrap(), v);
+    }
+
+    #[test]
+    fn quotes_control_characters() {
+        assert_eq!(quote("a\tb"), "\"a\\tb\"");
+        assert_eq!(quote("\u{1}"), "\"\\u0001\"");
     }
 }
