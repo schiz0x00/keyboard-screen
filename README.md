@@ -157,3 +157,16 @@ wireless channel: they are undefined there, and their wired neighbours
 Run it with the keyboard switched to 2.4G mode; a battery reply means the
 channel is live and the image path is worth reverse-engineering from a USB
 capture of the vendor software.
+
+### Confirmed wireless findings
+
+Established on real hardware with `--probe-write`:
+
+* **The keyboard acts on wireless host writes.** Driving the RGB over `0xff60`
+  with the documented packets changes the lighting, so the 32-byte envelope —
+  `aa 55` marker, checksum at byte 31 — is validated and accepted. Only the
+  *display* opcode remains unknown.
+* **Wireless RGB byte order is R, G, B at bytes 4, 5, 6.** The existing
+  open-source drivers put blue in byte 4 and red in byte 6, which renders red
+  and blue swapped. Green sits in the middle either way, which is what makes the
+  error easy to overlook.

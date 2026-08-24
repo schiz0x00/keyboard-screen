@@ -63,9 +63,13 @@ fn rgb_set(mode: u8, brightness: u8, color: u32) -> Vec<u8> {
     p[0] = 0x05;
     p[1] = 0x10;
     p[3] = mode;
-    p[4] = (color & 0xff) as u8;
+    // Byte order is R, G, B - determined empirically on real hardware. The
+    // existing open-source drivers write blue into byte 4 and red into byte 6,
+    // which comes out with red and blue swapped; green is unaffected either way,
+    // which is why the mistake is easy to miss.
+    p[4] = ((color >> 16) & 0xff) as u8;
     p[5] = ((color >> 8) & 0xff) as u8;
-    p[6] = ((color >> 16) & 0xff) as u8;
+    p[6] = (color & 0xff) as u8;
     p[11] = 0; // not "colorful" - use the fixed colour we passed
     p[12] = brightness;
     p[13] = 3; // speed
