@@ -12,6 +12,11 @@ REPO="${KEYBOARD_SCREEN_REPO:-schiz0x00/keyboard-screen}"
 BIN_DIR="${KEYBOARD_SCREEN_BIN_DIR:-$HOME/.local/bin}"
 UDEV_RULE="/etc/udev/rules.d/99-aula-f75max.rules"
 SKIP_UDEV="${KEYBOARD_SCREEN_SKIP_UDEV:-0}"
+
+# Epomaker x Aula F75 Max. uaccess hands the logged-in user the hidraw nodes.
+# The screen is wired-only; the 2.4GHz dongle has no pixel pipe.
+UDEV_RULE_TEXT='KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="800a", TAG+="uaccess"'
+udev_manual=0
 NAME="keyboard-screen"
 
 say()  { printf '\033[1;34m::\033[0m %s\n' "$1"; }
@@ -43,6 +48,25 @@ download_release() {
 
     say "Downloading $url"
     curl -fsSL "$url" -o "$tmp/dl" || return 1
+
+    # Verify against the release's SHA256SUMS when we can. A failed checksum is
+    # fatal: silently installing a corrupted or tampered binary is worse than
+    # not installing at all.
+    sums="$(printf '%s' "$url" | sed 's|/[^/]*$|/SHA256SUMS|')"
+    if need sha256sum && curl -fsSL "$sums" -o "$tmp/SHA256SUMS" 2>/dev/null; then
+        want="$(awk -v f="$(basename "$url")" '$2 == f || $2 == "./" f {print $1}' "$tmp/SHA256SUMS" | head -n1)"
+        if [ -n "$want" ]; then
+            got="$(sha256sum "$tmp/dl" | cut -d" " -f1)"
+            [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$url")
+  expected $want
+  got      $got"
+            say "Checksum verified"
+        else
+            warn "No checksum listed for $(basename "$url"); continuing unverified"
+        fi
+    else
+        warn "Could not verify the download checksum"
+    fi
 
     # Releases may ship the bare binary or a tarball.
     case "$url" in
@@ -98,19 +122,25 @@ esac
 if [ "$SKIP_UDEV" = "1" ]; then
     say "Skipping the udev rule (KEYBOARD_SCREEN_SKIP_UDEV=1)"
 elif [ -n "$SUDO" ] || [ "$(id -u)" -eq 0 ]; then
-    say "Installing udev rule at $UDEV_RULE"
-    $SUDO sh -c "cat > '$UDEV_RULE'" <<'RULE'
-# Epomaker x Aula F75 Max - let the logged-in user drive the 128x128 screen
-# without root. The screen is wired-only; the 2.4GHz dongle has no pixel pipe.
-KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="800a", TAG+="uaccess"
-RULE
-    $SUDO udevadm control --reload >/dev/null 2>&1 || warn "udevadm reload failed"
-    $SUDO udevadm trigger >/dev/null 2>&1 || warn "udevadm trigger failed"
-    say "Replug the keyboard for the rule to take effect."
+    say "Installing udev rule at $UDEV_RULE (may prompt for your password)"
+    # Never fatal: the binary is already installed and useful, and the rule can
+    # be added by hand. A non-interactive shell has no tty for sudo to prompt on.
+    if printf '%s\n' "$UDEV_RULE_TEXT" | $SUDO tee "$UDEV_RULE" >/dev/null 2>&1; then
+        $SUDO udevadm control --reload >/dev/null 2>&1 || warn "udevadm reload failed"
+        $SUDO udevadm trigger >/dev/null 2>&1 || warn "udevadm trigger failed"
+        say "Replug the keyboard for the rule to take effect."
+    else
+        warn "Could not write $UDEV_RULE (no sudo password prompt available?)."
+        udev_manual=1
+    fi
 else
-    warn "Skipped the udev rule. Install it yourself with:"
-    printf '       sudo tee %s <<< %s\n' "$UDEV_RULE" \
-        '"KERNEL==\"hidraw*\", ATTRS{idVendor}==\"0c45\", ATTRS{idProduct}==\"800a\", TAG+=\"uaccess\""'
+    udev_manual=1
+fi
+
+if [ "${udev_manual:-0}" = "1" ]; then
+    warn "The udev rule was not installed. Without it the screen needs root."
+    printf '   Run this yourself:\n\n       echo %s | sudo tee %s\n       sudo udevadm control --reload && sudo udevadm trigger\n\n' \
+        "'$UDEV_RULE_TEXT'" "$UDEV_RULE"
 fi
 
 # ---------------------------------------------------------------------- finish

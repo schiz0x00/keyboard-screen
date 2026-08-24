@@ -15,9 +15,17 @@ an Epomaker × Aula F75 Max.
 curl -fsSL https://raw.githubusercontent.com/schiz0x00/keyboard-screen/main/install.sh | sh
 ```
 
-Grabs the latest release binary (or builds from source if there isn't one),
-installs it to `~/.local/bin`, and adds the udev rule so the screen is writable
-without root. Replug the keyboard afterwards.
+Grabs the latest release binary, verifies it against the release checksums (or
+builds from source if there's no release for your platform), installs it to
+`~/.local/bin`, and adds the udev rule so the screen is writable without root.
+Replug the keyboard afterwards.
+
+To override anything, put the variable after the pipe — before it, the shell
+would set it on `curl` instead:
+
+```sh
+curl -fsSL .../install.sh | KEYBOARD_SCREEN_BIN_DIR=~/bin KEYBOARD_SCREEN_SKIP_UDEV=1 sh
+```
 
 ## Use
 

@@ -5,6 +5,17 @@ All notable changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-24
+
+### Fixed
+
+- `install.sh` now verifies the download against the release `SHA256SUMS` and
+  refuses to install on a mismatch.
+- A failed `sudo` no longer aborts the installer. The binary is already useful
+  without the udev rule, so the script warns, prints the exact command to run by
+  hand, and finishes normally. This affected any non-interactive run, where sudo
+  has no terminal to prompt on.
+
 ## [0.1.0] - 2026-08-24
 
 First release.
@@ -29,5 +40,6 @@ First release.
 - Wireless RGB byte order is R, G, B at bytes 4, 5, 6 — both existing
   open-source drivers have red and blue swapped.
 
-[Unreleased]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/schiz0x00/keyboard-screen/releases/tag/v0.1.0
