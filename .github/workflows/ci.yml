@@ -49,6 +49,10 @@ jobs:
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
+    # Dependabot pull requests run with a read-only token, so audit-check cannot
+    # report and the check would sit pending forever. Their dependency changes
+    # are audited on main straight after the merge.
+    if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2
