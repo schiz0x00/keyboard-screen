@@ -1,2 +1,7 @@
+# Rust build output
 /target
-re/
+
+# Reverse-engineering scratch: extracted vendor software, Ghidra projects.
+# Both are large binaries and neither belongs in source control.
+/re
+/ghidra
