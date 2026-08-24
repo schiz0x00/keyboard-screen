@@ -1,6 +1,6 @@
 [package]
 name = "keyboard-screen"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 description = "Claude usage limits on the Epomaker x Aula F75 Max 128x128 keyboard screen"
 license = "MIT"

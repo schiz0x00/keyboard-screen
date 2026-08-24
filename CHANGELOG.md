@@ -5,6 +5,19 @@ All notable changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-24
+
+### Added
+
+- `--watch` now refreshes the screen the moment usage climbs, instead of only on
+  its interval. Between pings it reads Claude Code's `usage-exact.json` - a free
+  local read - every two seconds, and pushes a new frame within seconds of the
+  numbers rising, at most once every 15 seconds. The API ping still owns the
+  interval, since each one spends quota, and a quiet stretch stays on the plain
+  60s cadence.
+- The README now documents every option, and both `--watch` forms: bare (60s
+  default) and `--watch SECS`.
+
 ## [0.1.2] - 2026-08-24
 
 ### Fixed
@@ -49,7 +62,8 @@ First release.
 - Wireless RGB byte order is R, G, B at bytes 4, 5, 6 — both existing
   open-source drivers have red and blue swapped.
 
-[Unreleased]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/schiz0x00/keyboard-screen/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/schiz0x00/keyboard-screen/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/schiz0x00/keyboard-screen/releases/tag/v0.1.0
