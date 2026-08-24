@@ -11,6 +11,7 @@ set -eu
 REPO="${KEYBOARD_SCREEN_REPO:-OWNER/keyboard-screen}"
 BIN_DIR="${KEYBOARD_SCREEN_BIN_DIR:-$HOME/.local/bin}"
 UDEV_RULE="/etc/udev/rules.d/99-aula-f75max.rules"
+SKIP_UDEV="${KEYBOARD_SCREEN_SKIP_UDEV:-0}"
 NAME="keyboard-screen"
 
 say()  { printf '\033[1;34m::\033[0m %s\n' "$1"; }
@@ -94,7 +95,9 @@ esac
 
 # ------------------------------------------------------------------- udev rule
 # The screen is driven over hidraw; without this the device nodes are root-only.
-if [ -n "$SUDO" ] || [ "$(id -u)" -eq 0 ]; then
+if [ "$SKIP_UDEV" = "1" ]; then
+    say "Skipping the udev rule (KEYBOARD_SCREEN_SKIP_UDEV=1)"
+elif [ -n "$SUDO" ] || [ "$(id -u)" -eq 0 ]; then
     say "Installing udev rule at $UDEV_RULE"
     $SUDO sh -c "cat > '$UDEV_RULE'" <<'RULE'
 # Epomaker x Aula F75 Max - let the logged-in user drive the 128x128 screen
