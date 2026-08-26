@@ -148,7 +148,7 @@ fn main() {
 
     match args.watch {
         None => {
-            if let Err(e) = tick(&args) {
+            if let Err(e) = tick(&args, &mut None) {
                 eprintln!("error: {e}");
                 std::process::exit(1);
             }
@@ -158,7 +158,12 @@ fn main() {
 }
 
 /// One refresh-render-upload cycle.
-fn tick(args: &Args) -> Result<(), String> {
+///
+/// `last` holds the frame the screen is currently showing. Uploading a full
+/// 128x128 frame is the expensive half of a tick, and most ticks land on
+/// numbers that have not moved, so an identical frame is dropped rather than
+/// pushed again. It is only updated once the upload has actually succeeded.
+fn tick(args: &Args, last: &mut Option<Vec<u8>>) -> Result<(), String> {
     if args.test_pattern {
         let tag = if args.wireless { "2.4G" } else { "USB" };
         let canvas = render::test_pattern(tag);
@@ -169,10 +174,17 @@ fn tick(args: &Args) -> Result<(), String> {
                 .map_or(Ok(()), |p| write_ppm(p, &canvas));
         }
         let stream = display::encode(&canvas);
+        if last.as_deref() == Some(stream.as_slice()) {
+            if args.verbose {
+                eprintln!("frame unchanged - skipping upload");
+            }
+            return Ok(());
+        }
         return if args.wireless {
             display::upload_wireless(&stream, args.slot, wireless_variant(args)?, args.verbose)
+                .inspect(|()| *last = Some(stream))
         } else {
-            display::upload(&stream, args.slot, args.verbose)
+            display::upload(&stream, args.slot, args.verbose).inspect(|()| *last = Some(stream))
         };
     }
 
@@ -199,11 +211,21 @@ fn tick(args: &Args) -> Result<(), String> {
         return Ok(());
     }
     let stream = display::encode(&canvas);
+    if last.as_deref() == Some(stream.as_slice()) {
+        if args.verbose {
+            eprintln!("frame unchanged - skipping upload");
+        }
+        return Ok(());
+    }
     if args.wireless {
-        return display::upload_wireless(&stream, args.slot, wireless_variant(args)?, args.verbose);
+        return display::upload_wireless(&stream, args.slot, wireless_variant(args)?, args.verbose)
+            .inspect(|()| *last = Some(stream));
     }
     match display::upload(&stream, args.slot, args.verbose) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            *last = Some(stream);
+            Ok(())
+        }
         // The screen is wired-only, so a keyboard on 2.4G or Bluetooth simply
         // has no endpoint to write to. That is the expected state half the
         // time, not a fault - keep the last frame and say so once.
@@ -256,13 +278,16 @@ fn collect(args: &Args) -> Snapshot {
 fn watch(args: &Args, interval: u64) {
     let mut wall = state::now();
     let mut failures: u32 = 0;
+    // The frame currently on the screen; ticks that render the same one skip
+    // the upload entirely.
+    let mut last: Option<Vec<u8>> = None;
     // Highest reading seen in Claude Code's file, so each climb fires once.
     let mut seen = state::claude_code_peak();
     let mut last_burst = Instant::now() - Duration::from_secs(MIN_BURST_GAP);
 
     loop {
         let started = Instant::now();
-        let ok = tick(args).map_err(|e| eprintln!("error: {e}")).is_ok();
+        let ok = tick(args, &mut last).map_err(|e| eprintln!("error: {e}")).is_ok();
         failures = if ok { 0 } else { (failures + 1).min(6) };
 
         // Back off on repeated failure, but never past one interval * 8.

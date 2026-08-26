@@ -5,6 +5,16 @@ All notable changes are recorded here. Versions follow
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-26
+
+### Changed
+
+- `--watch` only uploads a frame when it differs from the one already on the
+  screen. Ticks are compared on the encoded frame rather than the raw numbers,
+  so the screen is rewritten exactly when its pixels would change - including
+  the age and source labels - and an unchanged tick costs nothing beyond the
+  ping it already made.
+
 ## [0.2.0] - 2026-08-24
 
 ### Added
